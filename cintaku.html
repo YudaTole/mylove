@@ -1,0 +1,278 @@
+<!DOCTYPE html><html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Love Gallery — Slideshow Romantis + Musik</title>
+  <meta name="description" content="Website percintaan dengan slideshow foto romantis, musik latar, dan quotes yang menyentuh hati." />
+  <style>
+    :root{
+      --bg: #0f0b10;
+      --text: #fff;
+      --accent: #ff6aa2;
+      --accent-2: #ff9bd1;
+      --overlay: rgba(0,0,0,.55);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --duration: 6500ms; /* durasi tiap slide */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;}
+    body{
+      margin:0; background:var(--bg); color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+      overflow:hidden;
+    }/* ===== Canvas Utama ===== */
+.app{
+  position:relative; width:100%; height:100vh; overflow:hidden;
+}
+
+/* Dua layer untuk crossfade */
+.layer{
+  position:absolute; inset:0; background-position:center; background-size:cover; background-repeat:no-repeat;
+  transition:opacity 1200ms ease, transform 7s ease;
+  filter: saturate(1.05) contrast(1.02);
+}
+.layer.dim{opacity:0}
+
+/* Vignette & blur halus untuk keterbacaan teks */
+.backdrop{
+  position:absolute; inset:0; background: radial-gradient(1200px 600px at 50% 70%, rgba(0,0,0,.0), rgba(0,0,0,.45) 55%, rgba(0,0,0,.65));
+  pointer-events:none;
+}
+
+/* Quote Area */
+.quote{
+  position:absolute; left:50%; bottom:12vh; transform:translateX(-50%);
+  width:min(90vw, 900px); text-align:center; z-index:5;
+  padding: 18px 22px; border-radius:20px; backdrop-filter: blur(6px);
+  background: linear-gradient( to bottom, rgba(255,255,255,.10), rgba(255,255,255,.05) );
+  box-shadow: var(--shadow);
+  opacity:0; transition: opacity 900ms ease, transform 900ms ease;
+}
+.quote.show{opacity:1; transform:translateX(-50%) translateY(0)}
+.quote p{margin:0; font-size: clamp(18px, 3.3vw, 30px); line-height:1.35;}
+.quote .by{margin-top:10px; font-size: clamp(12px, 2vw, 16px); opacity:.85}
+
+/* Intro Overlay dengan tombol Play */
+.intro{
+  position:absolute; inset:0; display:grid; place-items:center; z-index:10; background: radial-gradient(800px 400px at 50% 50%, rgba(255,106,162,.10), rgba(0,0,0,.80));
+  transition: opacity 700ms ease; backdrop-filter: blur(2px);
+}
+.intro.hide{opacity:0; pointer-events:none}
+
+.play-btn{
+  --size: 108px; width:var(--size); height:var(--size); border-radius:999px; display:grid; place-items:center; cursor:pointer;
+  background: conic-gradient(from 210deg at 50% 50%, var(--accent), var(--accent-2));
+  box-shadow: 0 10px 40px rgba(255,106,162,.55), inset 0 0 0 6px rgba(255,255,255,.15);
+  position:relative; isolation:isolate; transition: transform .2s ease;
+}
+.play-btn:hover{ transform: scale(1.04) }
+.play-btn::after{ content:""; position:absolute; inset:-12px; border-radius:inherit; background: radial-gradient(circle, rgba(255,255,255,.25), transparent 60%); filter: blur(14px); z-index:-1; }
+.play-icon{ width:42%; aspect-ratio:1/1; display:block; margin-left:6px; }
+
+.hint{ position:absolute; bottom:28px; left:50%; transform:translateX(-50%); font-size:14px; opacity:.8 }
+
+/* Floating hearts (ringan) */
+.hearts{ position:absolute; inset:0; pointer-events:none; overflow:hidden; z-index:3 }
+.heart{ position:absolute; bottom:-40px; font-size: 16px; opacity: .9; animation: floatUp linear forwards; }
+@keyframes floatUp{ to{ transform: translateY(-120vh) translateX(var(-- drift, 0px)); opacity: 0 } }
+
+/* Simple brand / title (opsional) */
+.brand{ position:absolute; top:18px; left:50%; transform:translateX(-50%); z-index:6; font-weight:600; letter-spacing:.4px; font-size:14px; opacity:.9 }
+
+/* Responsif agar aman untuk HP */
+@media (max-width:520px){
+  .quote{ bottom:10vh; padding:14px 16px }
+}
+
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <!-- Dua layer untuk efek crossfade -->
+    <div class="layer" id="layerA" aria-hidden="true"></div>
+    <div class="layer dim" id="layerB" aria-hidden="true"></div><div class="backdrop" aria-hidden="true"></div>
+
+<!-- Quote -->
+<div class="quote" id="quoteBox">
+  <p id="quoteText">Kamu adalah alasan mengapa hatiku percaya pada rumah.</p>
+  <div class="by" id="quoteBy">— Unknown</div>
+</div>
+
+<!-- Floating hearts container -->
+<div class="hearts" id="hearts"></div>
+
+<!-- Intro overlay dengan tombol Play -->
+<div class="intro" id="intro">
+  <div class="play-btn" id="playBtn" aria-label="Mulai">
+    <svg class="play-icon" viewBox="0 0 24 24" fill="white" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+  </div>
+  <div class="hint">Sentuh tombol untuk memulai musik & slideshow</div>
+</div>
+
+<!-- (Opsional) Judul kecil di atas -->
+<div class="brand">Love Gallery</div>
+
+<!-- Audio: ganti src ke file MP3 kamu -->
+<audio id="bgm" preload="auto" loop>
+  <!-- TODO: Ganti ke file kamu, misal assets/music.mp3 -->
+  <source src="assets/music.mp3" type="audio/mpeg" />
+</audio>
+
+  </div>  <script>
+    // ================== KONFIGURASI ==================
+    // 1) Daftar foto — ganti dengan path file kamu
+    const IMAGES = [
+      'images/photo1.jpg',
+      'images/photo2.jpg',
+      'images/photo3.jpg',
+      'images/photo4.jpg',
+      'images/photo5.jpg',
+      'images/photo6.jpg',
+      'images/photo7.jpg',
+      'images/photo8.jpg',
+      'images/photo9.jpg',
+      'images/photo10.jpg'
+    ];
+
+    // 2) Quotes — jumlahnya disarankan sama dengan jumlah foto
+    const QUOTES = [
+      { text: 'Aku mencintaimu bukan karena siapa kamu, tetapi karena siapa diriku saat bersamamu.', by: '— Roy Croft' },
+      { text: 'Di matamu, aku menemukan rumah. Di hatimu, aku menemukan damai.', by: '— Unknown' },
+      { text: 'Cinta adalah janji, cinta adalah kenangan. Sekali diberi, takkan pernah dilupakan.', by: '— John Lennon' },
+      { text: 'Kau tidak hanya mengisi hari-hariku, kau melengkapi hidupku.', by: '— Unknown' },
+      { text: 'Terkadang, kebahagiaan adalah sesederhana mendengar suaramu.', by: '— Unknown' },
+      { text: 'Kau adalah paragraf favorit di setiap bab hidupku.', by: '— Unknown' },
+      { text: 'Dalam semesta kemungkinan, aku tetap memilih kamu.', by: '— Unknown' },
+      { text: 'Cinta yang dewasa bukan tentang memiliki, melainkan menjaga dan bertumbuh bersama.', by: '— Unknown' },
+      { text: 'Bersamamu, jam terasa menit, dan rindu terasa detik.', by: '— Unknown' },
+      { text: 'Genggamlah tanganku, mari kita pulang ke kita.', by: '— Unknown' }
+    ];
+
+    // 3) Durasi slide (ms) — sinkron dengan CSS --duration
+    const SLIDE_DURATION = 6500; // 6.5 detik per slide
+
+    // 4) Efek Ken Burns (zoom pelan)
+    const KEN_BURNS_SCALE_A = 1.06;
+    const KEN_BURNS_SCALE_B = 1.00;
+
+    // ================== LOGIC ==================
+    const layerA = document.getElementById('layerA');
+    const layerB = document.getElementById('layerB');
+    const quoteBox = document.getElementById('quoteBox');
+    const quoteText = document.getElementById('quoteText');
+    const quoteBy = document.getElementById('quoteBy');
+    const intro = document.getElementById('intro');
+    const playBtn = document.getElementById('playBtn');
+    const audio = document.getElementById('bgm');
+    const hearts = document.getElementById('hearts');
+
+    let index = 0; let onA = true; let timer = null; let started = false;
+
+    // Preload gambar agar transisi lebih halus
+    IMAGES.forEach(src => { const i = new Image(); i.src = src; });
+
+    function setSlide(idx){
+      const url = `url('${IMAGES[idx % IMAGES.length]}')`;
+      const quote = QUOTES[idx % QUOTES.length] || {text:'', by:''};
+      // switch layer untuk crossfade
+      if(onA){
+        layerB.style.backgroundImage = url;
+        layerB.style.transform = `scale(${KEN_BURNS_SCALE_A})`;
+        layerA.classList.add('dim');
+        layerB.classList.remove('dim');
+      }else{
+        layerA.style.backgroundImage = url;
+        layerA.style.transform = `scale(${KEN_BURNS_SCALE_B})`;
+        layerB.classList.add('dim');
+        layerA.classList.remove('dim');
+      }
+      onA = !onA;
+
+      // update quote
+      quoteBox.classList.remove('show');
+      // tunggu fade-out sedikit agar sinkron
+      setTimeout(()=>{
+        quoteText.textContent = quote.text;
+        quoteBy.textContent = quote.by || '';
+        quoteBox.classList.add('show');
+      }, 250);
+    }
+
+    function startShow(){
+      if(started) return; started = true;
+      // Set slide pertama dulu
+      setSlide(index++);
+      // kemudian interval berulang
+      timer = setInterval(()=> setSlide(index++), SLIDE_DURATION);
+      // Intro fade-out
+      intro.classList.add('hide');
+      // Spawn hearts ringan
+      spawnHearts();
+    }
+
+    // Tombol play: mulai musik + slideshow
+    playBtn.addEventListener('click', async () => {
+      try{
+        await audio.play();
+      }catch(e){
+        // Jika gagal autoplay, biarkan slideshow jalan; user bisa tekan layar lagi untuk play
+        console.warn('Autoplay ditolak browser:', e);
+      }
+      startShow();
+    });
+
+    // Allow tap anywhere pada overlay
+    intro.addEventListener('click', async (e)=>{
+      if(e.target === intro){ // klik area overlay di luar tombol
+        try{ await audio.play(); }catch(_){ }
+        startShow();
+      }
+    });
+
+    // ==== Hearts ringan ====
+    function spawnHearts(){
+      const EMO = ['\u2665','\u2764\uFE0F']; // ♡, ❤️
+      const make = () => {
+        if(!started) return;
+        const h = document.createElement('div');
+        h.className = 'heart'; h.textContent = EMO[Math.random()>0.4?1:0];
+        const left = Math.random()*100; // vw
+        const size = 14 + Math.random()*18; // px
+        const dur = 6000 + Math.random()*6000; // ms
+        const drift = (-30 + Math.random()*60) + 'px';
+        h.style.left = left + 'vw';
+        h.style.fontSize = size + 'px';
+        h.style.animationDuration = dur + 'ms';
+        h.style.setProperty('-- drift', drift);
+        hearts.appendChild(h);
+        setTimeout(()=> h.remove(), dur);
+      };
+      // interval pembuatan hati
+      setInterval(make, 900);
+    }
+
+    // Start dengan gambar pertama agar background tidak kosong sebelum klik
+    (function bootstrap(){
+      layerA.style.backgroundImage = `url('${IMAGES[0]}')`;
+      layerA.classList.remove('dim');
+      quoteText.textContent = QUOTES[0].text;
+      quoteBy.textContent = QUOTES[0].by;
+      // Biarkan quote belum show sampai user menekan play
+    })();
+  </script>  <!--
+  ================== CARA PAKAI ==================
+  1) Siapkan struktur folder sederhana:
+     /index.html
+     /assets/music.mp3      (ganti dengan musik kamu)
+     /images/photo1.jpg ... /images/photo10.jpg (ganti fotomu)
+
+  2) Ganti daftar IMAGES (baris di atas) sesuai nama file foto kamu.
+     Gunakan format .jpg atau .webp agar ringan (200–300 KB/foto lebih bagus).
+
+  3) Ganti isi QUOTES sesuai keinginan (jumlah boleh sama dgn jumlah foto).
+
+  4) Atur SLIDE_DURATION untuk durasi tiap foto.
+
+  5) Deploy di hosting statis (Netlify/Vercel/GitHub Pages) atau buka langsung di HP kamu.
+     Note: sebagian browser HP membatasi autoplay. Karena kita pakai tombol Play, musik akan jalan begitu disentuh.
+  --></body>
+</html>
